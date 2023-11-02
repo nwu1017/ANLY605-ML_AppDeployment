@@ -1,0 +1,276 @@
+---
+title: Assignment 03
+subtitle: Hyperparameter Tunning
+date: 10/27/2023
+date-modified: last-modified
+date-format: long
+format:
+  html:
+    theme:
+      - cosmo
+      - theme.scss
+    toc: true
+    embed-resources: true
+    number-sections: true
+author:
+  - name: Landon Carpenter
+    affiliations:
+      - id: gu
+        name: Georgetown University
+        city: Washington
+        state: DC
+  - name: Nuoya Wu (Nora)
+    affiliations:
+      - ref: gu
+jupyter: python3
+---
+
+## Load the dataset and display the dataframe (2 Points).
+
+```{python}
+import pandas as pd 
+
+df_shopping = pd.read_csv("online_shoppers_intention.csv")
+
+print(df_shopping.head())
+```
+
+## Use `describe` to provide statistics on the pandas Dataframe (2 Points).
+
+```{python}
+df_shopping.describe()
+```
+
+```{python}
+df_shopping["Revenue"].value_counts()
+```
+
+## Split the dataset into a Training set and a Test set. Justify your preferred split (3 Points).
+
+```{python}
+from sklearn.model_selection import train_test_split
+
+# "Revenue" is the target variable 
+
+X = df_shopping.drop("Revenue", axis =1)
+y = df_shopping["Revenue"]
+
+# Split the dataset into 80% training and 20% test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+```
+
+```{python}
+# categorical variables for one-hot encoding
+X_train = pd.get_dummies(X_train)
+X_test = pd.get_dummies(X_test)
+
+
+X_train.head()
+```
+
+```{python}
+# Ensure that train and test set have the same columns after encoding
+X_train, X_test = X_train.align(X_test, axis=1, fill_value=0)
+```
+
+# Classification Routine (12 Points):
+
+Execute a classification routine using RandomForestClassifier(), BaggingClassifier(), and XGboostclassifier(). Independently output the accuracy box plot as discussed in class. Use any package you are comfortable with (seaborn, matplotlib).
+
+## RandomForestClassifier():
+
+```{python}
+import random
+from seaborn.palettes import color_palette
+import warnings
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from sklearn.model_selection import cross_val_score, GridSearchCV, RandomizedSearchCV
+from sklearn.ensemble import  RandomForestClassifier, BaggingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from xgboost import XGBClassifier
+```
+
+```{python}
+random.seed(1276)
+warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore")
+#k-fold cross validation
+k=10
+```
+
+```{python}
+rfc = RandomForestClassifier(random_state=1276)
+rfc_acc = cross_val_score(rfc, X_train, y_train, cv=k, scoring='accuracy')
+```
+
+## BaggingClassifier():
+
+```{python}
+bc = BaggingClassifier(random_state=1276)
+bc_acc = cross_val_score(bc, X_train, y_train, cv=k, scoring='accuracy')
+```
+
+## XGboostclassifier():
+
+```{python}
+xgb = XGBClassifier(random_state=1276)
+xgb_acc = cross_val_score(xgb, X_train, y_train, cv=k, scoring='accuracy')
+```
+
+Visualization
+
+```{python}
+my_acc = [rfc_acc, bc_acc, xgb_acc]
+my_labels = ['Random Forest', 'Bagging', 'XGBoost']
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.boxplot(data=my_acc, palette='Set3')
+ax.set_xticklabels(my_labels, rotation=60)
+ax.set_title('Model Accuracy Comparison')
+ax.set_ylabel('Accuracy')
+plt.show()
+```
+
+Without any specification (the default n_estimator = 10 and max_samples =1), Random Forest model performs better overall with the median accuracy score above 0.90 
+
+(From the previous trial) For the same number of base estimators (100), the result shows that XGBoost Classifier performs the best in terms of accuracy in predicting customers' shopping intent.
+
+# Classification with GridSearchCV (8 Points):
+
+Replicate the classification from Q2 using GridsearchCV().
+
+```{python}
+params = {'n_estimators':  [5, 10, 100],
+            'random_state': [1276]
+            }
+
+rfc_grid = GridSearchCV(rfc, params, cv=k, scoring='accuracy', n_jobs=-1)
+rfc_grid.fit(X_train, y_train)
+```
+
+```{python}
+#show the best hyperparameters for rfc
+print(f"Best parameters for Random Forest: {rfc_grid.best_params_}")
+```
+
+After evaluating the random forest classifier with 3 different parameter combinations, the best parameters for random forests would be 300 base estimators are used in the ensemble (maximum available option). 
+
+```{python}
+params = {'n_estimators': [5, 10, 100],
+            'random_state': [1276]
+            }
+bc_grid = GridSearchCV(bc, params, cv=k, scoring='accuracy', n_jobs=-1)
+
+bc_grid.fit(X_train, y_train)
+```
+
+```{python}
+print(f"Best parameters for Bagging: {bc_grid.best_params_}")
+```
+
+```{python}
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", category=FutureWarning)
+    params = {'n_estimators':  [5, 10, 100],
+          # 'max_depth': [3, 5, 7],
+            'random_state': [1276]
+            }
+    xgb_grid = GridSearchCV(xgb, params, cv=k, scoring='accuracy', n_jobs=-1)
+    xgb_grid.fit(X_train, y_train)
+
+```
+
+```{python}
+print(f"Best parameters for XGBoost: {xgb_grid.best_params_}")
+```
+
+```{python}
+rfc_results = rfc_grid.cv_results_['mean_test_score']
+bc_results = bc_grid.cv_results_['mean_test_score']
+xgb_results = xgb_grid.cv_results_['mean_test_score']
+
+all = [rfc_results, bc_results, xgb_results]
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.boxplot(data=all, palette='Set3')
+ax.set_xticklabels(my_labels, rotation=60)
+ax.set_title('Model Accuracy Comparison - Grid Search')
+ax.set_ylabel('Accuracy')
+plt.show()
+```
+
+The XGBoost performs the best even though it only needs 10 base estimators (whereas for the other two were 100)
+
+(From previous trial) The box plots show that Random Forest has the widest range of accuracy scores among the three models, whereas the bagging model is the most consistent with the highest mean accuracy scores. 
+
+# Classification with RandomSearchCV (8 Points):
+
+Replicate the classification from Q2 using RandomSearchCV().
+
+```{python}
+params = {'n_estimators': [100, 200, 300],
+            'max_depth': [3, 5, 7],
+            'random_state': [1276]
+            }
+
+rfc_random = RandomizedSearchCV(rfc, params, cv=k, scoring='accuracy', n_jobs=-1)
+rfc_random.fit(X_train, y_train)
+
+print(f"Best parameters for Random Forest: {rfc_random.best_params_}")
+```
+
+```{python}
+params = {'n_estimators': [100, 200, 300],
+            'max_samples': [100, 200, 300],
+            'random_state': [1276]
+            }
+
+bc_random = RandomizedSearchCV(bc, params, cv=k, scoring='accuracy', n_jobs=-1)
+bc_random.fit(X_train, y_train)
+
+print(f"Best parameters for Bagging: {bc_random.best_params_}")
+```
+
+```{python}
+params = {'n_estimators': [100, 200, 300],
+            'max_depth': [3, 5, 7],
+            'random_state': [1276]
+            }
+
+xgb_random = RandomizedSearchCV(xgb, params, cv=k, scoring='accuracy', n_jobs=-1)
+xgb_random.fit(X_train, y_train)
+
+print(f"Best parameters for XGBoost: {xgb_random.best_params_}")
+```
+
+```{python}
+rfc_rscores = rfc_random.cv_results_['mean_test_score']
+bc_rscores = bc_random.cv_results_['mean_test_score']
+xgb_rscores = xgb_random.cv_results_['mean_test_score']
+
+all = [rfc_rscores, bc_rscores, xgb_rscores]
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.boxplot(data=all, palette='Set3')
+ax.set_xticklabels(my_labels, rotation=60)
+ax.set_title('Model Accuracy Comparison - Random Search')
+ax.set_ylabel('Accuracy')
+plt.show()
+```
+
+# Comparison and Analysis (5 Points):
+
+Compare the results from Q2, Q3, and Q4. Describe the best hyperparameters for all three experiments.
+
+```{python}
+print(f"Best parameters for Random Forest: {rfc_grid.best_params_}")
+print(f"Best parameters for Bagging: {bc_grid.best_params_}")
+print(f"Best parameters for XGBoost: {xgb_grid.best_params_}")
+```
+
+One of the key takeaways for me is that hyperparameters tuning really requires a deep understanding of the data and the modeling efforts. Understanding the nature of the data and also the problem can be very helpful. For example, the shopping intent dataset has many features and it might make sense to adjust "max_features" to find the right number. The "max_depth" can control overfitting and also ensure computational efficiency. Overall, we do see that most models performed around the 0.90 accuracy score threshold which is a very good sign. Hyperparameter tuning is both an art and a science. While there are systematic methods to search for the best parameters, intuition on understanding the data and selecting the right parameters for tuning play a significant role as well. 
+
